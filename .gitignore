@@ -1,3 +1,7 @@
 vEnv/
 __pycache__
 .ipynb_checkpoints
+.venv
+.vscode
+.env
+**/*.log
