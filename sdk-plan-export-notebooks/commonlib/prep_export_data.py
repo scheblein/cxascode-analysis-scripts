@@ -117,8 +117,9 @@ def normalize_records(records):
         })
 
     c = cfg.Config()
-    with open(c.NORMALIZED_TERRAFORM_LOG_PATH,"w") as f:
-        pretty_json=json.dumps(normalized_records, indent=4)
-        f.write(pretty_json)
+    if c.NORMALIZED_TERRAFORM_LOG_PATH:
+        with open(c.NORMALIZED_TERRAFORM_LOG_PATH, "w", encoding="utf-8") as f:
+            pretty_json = json.dumps(normalized_records, indent=4)
+            f.write(pretty_json)
 
     return normalized_records

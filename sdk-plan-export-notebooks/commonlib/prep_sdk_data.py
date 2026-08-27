@@ -97,11 +97,11 @@ def normalize_records(records):
 
     for record in records:
         level = record.get("@level")
-        msg = record.get("@message")
+        msg = record.get("@message") or ""
         timestamp = record.get("@timestamp")
         sdk_debug=False
 
-        if msg.find("SDK DEBUG")!=-1:
+        if "SDK DEBUG" in msg:
             sdk_debug=True
 
         if level=="info" and sdk_debug==True:
@@ -119,8 +119,9 @@ def normalize_records(records):
            normalized_records.append(msgJSON)
 
     c = cfg.Config()
-    with open(c.NORMALIZED_GENESYS_SDK_PATH, "w") as f:
-        pretty_json=json.dumps(normalized_records, indent=4)
-        f.write(pretty_json)        
+    if c.NORMALIZED_GENESYS_SDK_PATH:
+        with open(c.NORMALIZED_GENESYS_SDK_PATH, "w", encoding="utf-8") as f:
+            pretty_json = json.dumps(normalized_records, indent=4)
+            f.write(pretty_json)
 
     return normalized_records
