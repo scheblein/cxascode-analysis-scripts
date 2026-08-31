@@ -22,11 +22,12 @@ Start Jupyter from the **`notebooks/`** directory (or open notebooks from its wo
 ```
 notebooks/
   notebook_setup.py   # import bootstrap for workflow subfolders
+  whatisit.ipynb      # classify a capture and pick the right notebook
+  sdk-analysis.ipynb  # SDK DEBUG call counts from TF_LOG captures
   commonlib/          # shared Python helpers
   export/             # completed + hang export analysis
   plan/               # UI output, TF_LOG trace, and hang plan analysis
   apply/              # completed + hang apply analysis
-  _shared/            # whatisit, sdk-analysis, todo
 ```
 
 # Configuration
@@ -73,7 +74,7 @@ export DISABLE_NORMALIZED_CACHE=1   # in-memory only; no *-norm.json files
 export FORCE_RENORMALIZE=1          # ignore stale cache, re-parse raw capture
 ```
 
-All notebooks use `TERRAFORM_LOG_PATH`. Every analysis notebook except `_shared/whatisit.ipynb` normalizes the raw capture.
+All notebooks use `TERRAFORM_LOG_PATH`. Every analysis notebook except `whatisit.ipynb` normalizes the raw capture.
 
 **Capture file naming** (examples only — any path works):
 
@@ -162,7 +163,7 @@ For complex issues, enable **`TF_LOG`** and **`sdk_debug`** together.
 
 # Pick a notebook
 
-**Pick the workflow (export / plan / apply), then pick how the run went (finished normally → finished but need trace detail → hung or killed).** Set **`TERRAFORM_LOG_PATH`** to your capture file, run **`_shared/whatisit.ipynb`** if unsure what the file contains, then open the matching notebook.
+**Pick the workflow (export / plan / apply), then pick how the run went (finished normally → finished but need trace detail → hung or killed).** Set **`TERRAFORM_LOG_PATH`** to your capture file, run **`whatisit.ipynb`** if unsure what the file contains, then open the matching notebook.
 
 | | **Level 1 — UI JSON (stdout)** | **Level 2 — TF_LOG (completed)** | **Level 3 — TF_LOG (hung)** |
 |--|--|--|--|
@@ -171,7 +172,7 @@ For complex issues, enable **`TF_LOG`** and **`sdk_debug`** together.
 | **Plan** | `plan/output-analysis.ipynb` | `plan/log-analysis.ipynb` | `plan/hang-analysis.ipynb` |
 | **Apply** | `apply/analysis.ipynb` *(non-interactive only)* | `apply/analysis.ipynb` | `apply/hang-analysis.ipynb` |
 
-**SDK API call counts** (any workflow, level 2/3 captures): `_shared/sdk-analysis.ipynb` or **`log-chomper/`** for response-time percentiles.
+**SDK API call counts** (any workflow, level 2/3 captures): `sdk-analysis.ipynb` or **`log-chomper/`** for response-time percentiles.
 
 # Three levels of analysis
 
@@ -247,19 +248,19 @@ Use the same **`TF_LOG=json`** setup as level 2 while the run is stuck, or immed
 
 # Workflow
 
-1. Run **`_shared/whatisit.ipynb`** against `TERRAFORM_LOG_PATH` if you are not sure what the file contains.
+1. Run **`whatisit.ipynb`** against `TERRAFORM_LOG_PATH` if you are not sure what the file contains.
 2. Use the **Pick a notebook** matrix above (workflow × level), then open that notebook under `export/`, `plan/`, or `apply/`.
 
 # Analysis notebooks
 
-Notebooks are grouped by workflow under **`notebooks/`** (`export/`, `plan/`, `apply/`). Shared entry points live in **`_shared/`**. Use the **Pick a notebook** matrix to choose one. Notes:
+Notebooks are grouped by workflow under **`notebooks/`** (`export/`, `plan/`, `apply/`). Start with **`whatisit.ipynb`** at the notebooks root when routing; use **`sdk-analysis.ipynb`** for SDK call counts. Use the **Pick a notebook** matrix to choose one. Notes:
 
 - **`plan/output-analysis.ipynb`** parses **`terraform plan -json`** UI records (`refresh_start`, `resource_drift`, `planned_change`, etc.).
 - **`plan/log-analysis.ipynb`** parses **`TF_LOG=json`** trace logs captured during plan (as in `generator/generator.py` and `TF_LOG_PATH` workflows). **`resource_drift` is not available** in this format.
 - **Hang notebooks** (`export/hang-analysis.ipynb`, `plan/hang-analysis.ipynb`, `apply/hang-analysis.ipynb`) use the same **`TF_LOG=json`** captures but focus on stall patterns rather than completed-run timing.
-- **`_shared/sdk-analysis.ipynb`** parses `SDK DEBUG` request/response pairs embedded in **`TF_LOG`** output (emitted by provider HTTP hooks on every API call). Enable **`sdk_debug`** for full request bodies; it is not required for call counts or hang retry/404 analysis.
+- **`sdk-analysis.ipynb`** parses `SDK DEBUG` request/response pairs embedded in **`TF_LOG`** output (emitted by provider HTTP hooks on every API call). Enable **`sdk_debug`** for full request bodies; it is not required for call counts or hang retry/404 analysis.
 
-**Future work:** see `notebooks/_shared/todo.ipynb` for planned enhancements (export filter delta, 429 wait timing).
+**Future work:** see [`TODO.md`](TODO.md) for planned enhancements (export filter delta, 429 wait timing).
 
 # Shared library
 
@@ -267,5 +268,5 @@ Python helpers live in **`notebooks/commonlib/`** (`classify_tf_log.py`, `prep_h
 
 # Other tools
 
-- **`log-chomper/`** — CLI for SDK request/response pairing and **response-time percentiles by endpoint** (complements `_shared/sdk-analysis.ipynb`, which focuses on call counts).
+- **`log-chomper/`** — CLI for SDK request/response pairing and **response-time percentiles by endpoint** (complements `sdk-analysis.ipynb`, which focuses on call counts).
 - **`generator/`** — small script to generate many resources so there is enough activity to parse and log.

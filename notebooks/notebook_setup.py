@@ -16,5 +16,5 @@ def setup() -> Path:
             return root
     raise RuntimeError(
         "Could not find commonlib/. Start Jupyter from notebooks "
-        "or open a notebook under export/, plan/, apply/, or _shared/."
+        "or open a notebook from the notebooks/ directory."
     )
