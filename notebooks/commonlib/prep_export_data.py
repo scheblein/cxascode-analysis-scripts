@@ -5,6 +5,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('config.py'))))
 import commonlib.config as cfg
+import commonlib.event_timing as event_timing
 import commonlib.normalized_cache as norm_cache
 
 # Set up logging
@@ -113,4 +114,14 @@ def load_normalized_records(source_path=None):
         cache_path,
         read_json_from_file,
         _normalize_records_impl,
+    )
+
+
+def export_timing_dataframes(normalized_records):
+    return event_timing.event_timing_dataframes(
+        normalized_records,
+        start_type="export_start",
+        end_type="export_end",
+        group_key="resource_id",
+        start_extra_columns=["resource_label"],
     )
