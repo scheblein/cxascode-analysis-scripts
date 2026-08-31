@@ -301,7 +301,7 @@ def finalize_classification(result: TfLogClassification) -> TfLogClassification:
     if result.is_plan and result.is_apply and result.apply_rpc_count == 0:
         result.warnings.append(
             "Both plan and apply graph activity detected. "
-            "Apply logs often include a plan phase; use apply-analysis.ipynb for apply timing."
+            "Apply logs often include a plan phase; use apply/analysis.ipynb for apply timing."
         )
 
     return result
