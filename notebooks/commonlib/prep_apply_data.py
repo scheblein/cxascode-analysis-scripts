@@ -5,6 +5,7 @@ import os
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath("config.py"))))
 import commonlib.config as cfg
+import commonlib.normalized_cache as norm_cache
 import commonlib.prep_tf_log_trace as trace
 
 logging.basicConfig(filename="parse_apply_errors.log", level=logging.ERROR)
@@ -29,19 +30,37 @@ def read_json_from_file(file_path):
     return records
 
 
-def normalize_records(records):
+def _normalize_records_impl(records):
+    normalized_records = trace.normalize_ui_apply_records(records)
+    if not normalized_records:
+        normalized_records = trace.normalize_apply_trace_records(records)
+    return normalized_records
+
+
+def normalize_records(records, source_path=None):
     """
     Normalizes Terraform apply log records from either:
       - terraform apply -json UI output, or
       - TF_LOG=json trace output (graph visits / ApplyResourceChange RPC lines)
     """
-    normalized_records = trace.normalize_ui_apply_records(records)
-    if not normalized_records:
-        normalized_records = trace.normalize_apply_trace_records(records)
-
     c = cfg.Config()
-    if c.NORMALIZED_TERRAFORM_LOG_PATH:
-        with open(c.NORMALIZED_TERRAFORM_LOG_PATH, "w", encoding="utf-8") as f:
-            json.dump(normalized_records, f, indent=4)
+    source_path = source_path or c.TERRAFORM_LOG_PATH
+    cache_path = norm_cache.terraform_cache_path(source_path)
+    return norm_cache.normalize_with_cache(
+        source_path,
+        cache_path,
+        records,
+        _normalize_records_impl,
+    )
 
-    return normalized_records
+
+def load_normalized_records(source_path=None):
+    c = cfg.Config()
+    source_path = source_path or c.TERRAFORM_LOG_PATH
+    cache_path = norm_cache.terraform_cache_path(source_path)
+    return norm_cache.load_or_normalize(
+        source_path,
+        cache_path,
+        read_json_from_file,
+        _normalize_records_impl,
+    )

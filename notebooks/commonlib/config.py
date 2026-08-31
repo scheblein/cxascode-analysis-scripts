@@ -2,15 +2,16 @@
 class Config:
     """Notebook path configuration from environment variables.
 
-    TERRAFORM_LOG_PATH is the input capture file (read by all notebooks).
-    NORMALIZED_* paths are optional write-only outputs; nothing reads them back in.
+    TERRAFORM_LOG_PATH is the raw capture file (required).
+    Normalized JSON caches are derived automatically next to the capture file
+    (see normalized_cache.terraform_cache_path / sdk_cache_path).
+    Set DISABLE_NORMALIZED_CACHE=1 to skip reading and writing cache files.
+    Set FORCE_RENORMALIZE=1 to ignore an existing cache file and rebuild it.
     """
 
     def __init__(self):
         import os
 
         self.TERRAFORM_LOG_PATH = os.getenv("TERRAFORM_LOG_PATH", "")
-        # Written by normalize_records() in export/plan/apply prep modules; not read as input.
-        self.NORMALIZED_TERRAFORM_LOG_PATH = os.getenv("NORMALIZED_TERRAFORM_LOG_PATH", "")
-        # Written by normalize_records() in prep_sdk_data; not read as input.
-        self.NORMALIZED_GENESYS_SDK_PATH = os.getenv("NORMALIZED_GENESYS_SDK_PATH", "")
+        self.DISABLE_NORMALIZED_CACHE = os.getenv("DISABLE_NORMALIZED_CACHE", "")
+        self.FORCE_RENORMALIZE = os.getenv("FORCE_RENORMALIZE", "")

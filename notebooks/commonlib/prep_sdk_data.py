@@ -5,6 +5,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('config.py'))))
 import commonlib.config as cfg
+import commonlib.normalized_cache as norm_cache
 
 
 # Set up logging
@@ -69,59 +70,54 @@ def read_json_from_file(file_path):
                 logging.error(f"Failed to parse line '{line.strip()}' at line {e.lineno}: {e}")
     return records
 
-def normalize_records(records):
-    """
-    Normalizes a list of log records by extracting and transforming SDK debug messages.
-    
-    Args:
-        records (list): List of dictionaries containing log records to normalize
-        
-    Returns:
-        list: List of normalized records containing only SDK debug messages with transformed fields
-        
-    The function:
-    - Filters for info level SDK debug messages
-    - Extracts JSON data from the message
-    - Adds timestamp from original record
-    - Sanitizes URLs by replacing GUIDs
-    - Normalizes retry_after values to integers
-    - Writes normalized records to a JSON file
-    
-    Example:
-        >>> records = [{"@level": "info", "@message": "SDK DEBUG {...}", "@timestamp": "2023-01-01"}]
-        >>> normalized = normalize_records(records)
-        >>> print(normalized[0])
-        {'timestamp': '2023-01-01', 'sanitized_url': 'http://api/{ID}/resource', ...}
-    """
+def _normalize_records_impl(records):
     normalized_records = []
 
     for record in records:
         level = record.get("@level")
         msg = record.get("@message") or ""
         timestamp = record.get("@timestamp")
-        sdk_debug=False
+        sdk_debug = "SDK DEBUG" in msg
 
-        if "SDK DEBUG" in msg:
-            sdk_debug=True
+        if level == "info" and sdk_debug:
+            raw_data = msg[20:]
+            msg_json = json.loads(raw_data)
+            msg_json["timestamp"] = timestamp
+            msg_json["sanitized_url"] = strip_and_replace_guid(msg_json["invocation_url"])
 
-        if level=="info" and sdk_debug==True:
-           rawData= msg[20:]
-           msgJSON  = json.loads(rawData)
-           msgJSON["timestamp"]=timestamp
-           msgJSON["sanitized_url"]=strip_and_replace_guid(msgJSON["invocation_url"])
+            retry_after = msg_json.get("invocation_retry_after")
+            if retry_after is None:
+                msg_json["invocation_retry_after"] = 0
+            else:
+                msg_json["invocation_retry_after"] = int(msg_json["invocation_retry_after"])
 
-           retry_after = msgJSON.get("invocation_retry_after")
-           if retry_after==None:
-              msgJSON["invocation_retry_after"]=0
-           else:
-              msgJSON["invocation_retry_after"]=int(msgJSON["invocation_retry_after"])
-           
-           normalized_records.append(msgJSON)
-
-    c = cfg.Config()
-    if c.NORMALIZED_GENESYS_SDK_PATH:
-        with open(c.NORMALIZED_GENESYS_SDK_PATH, "w", encoding="utf-8") as f:
-            pretty_json = json.dumps(normalized_records, indent=4)
-            f.write(pretty_json)
+            normalized_records.append(msg_json)
 
     return normalized_records
+
+
+def normalize_records(records, source_path=None):
+    """
+    Normalizes a list of log records by extracting and transforming SDK debug messages.
+    """
+    c = cfg.Config()
+    source_path = source_path or c.TERRAFORM_LOG_PATH
+    cache_path = norm_cache.sdk_cache_path(source_path)
+    return norm_cache.normalize_with_cache(
+        source_path,
+        cache_path,
+        records,
+        _normalize_records_impl,
+    )
+
+
+def load_normalized_records(source_path=None):
+    c = cfg.Config()
+    source_path = source_path or c.TERRAFORM_LOG_PATH
+    cache_path = norm_cache.sdk_cache_path(source_path)
+    return norm_cache.load_or_normalize(
+        source_path,
+        cache_path,
+        read_json_from_file,
+        _normalize_records_impl,
+    )

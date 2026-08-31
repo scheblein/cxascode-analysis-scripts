@@ -5,6 +5,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('config.py'))))
 import commonlib.config as cfg
+import commonlib.normalized_cache as norm_cache
 
 # Set up logging
 logging.basicConfig(filename='parse_export_errors.log', level=logging.ERROR)
@@ -39,30 +40,9 @@ def read_json_from_file(file_path):
                 logging.error(f"Failed to parse line '{line.strip()}' at line {e.lineno}: {e}")
     return records
 
-#TODO: Make applicable to export (even if using same tflog!!)
-def normalize_records(records):
-    """
-    Normalizes Terraform log records into a standardized format.
-    
-    Args:
-        records (list): List of raw Terraform log records to normalize
-        
-    Returns:
-        list: List of normalized records with consistent fields
-        
-    Each normalized record contains:
-        - resource_id: ID of the resource (defaults to "None")
-        - timestamp: Timestamp from original record
-        - type: Record type (e.g. start, end)
-        - resource_type: Type of Terraform resource
-        - resource_label: Label of the resource
-    
-    The normalized records are also written to a JSON file at:
-    """
+def _normalize_records_impl(records):
     normalized_records = []
 
-    # start_re = re.compile(r"Started processing for resource:\s(.*)\.(.*)\s\((.*)\)")
-    # end_re = re.compile(r"Collected resource\:\sType\=(.*)\,\sBlockLabel\=(.*)\,\sID\=(.*)$")
     start_re = re.compile(
         r"Started processing for resource:\s(?P<type>[^.]+)\.(?P<label>\S+)\s\((?P<id>[^)]+)\)"
     )
@@ -71,40 +51,30 @@ def normalize_records(records):
     )
 
     for record in records:
-        #only process lines with @caller
         if "genesyscloud_resource_exporter" not in record.get("@caller", ""):
             continue
 
         message = record.get("@message", "")
-        
-        #reset variables
         resourceType = resourceLabel = resourceId = exportEvent = None
         m = None
 
-        #does it match start pattern?
         m = start_re.search(message)
         if m:
             exportEvent = "export_start"
         else:
-            #does it match end pattern?
             m = end_re.search(message)
             if m:
                 exportEvent = "export_end"
 
-        #matches nothing so skip
         if not m:
             continue
 
-        # resourceType = m.group(1).strip()
-        # resourceLabel = m.group(2).strip()
-        # resourceId = m.group(3).strip()
         resourceType = m.group("type").strip()
         resourceLabel = m.group("label").strip()
         resourceId = m.group("id").strip()
 
         ts = record.get("@timestamp") or record.get("timestamp")
         if not ts:
-            # no timestamp available; skip or set a default
             continue
 
         normalized_records.append({
@@ -116,10 +86,31 @@ def normalize_records(records):
             'type': exportEvent
         })
 
-    c = cfg.Config()
-    if c.NORMALIZED_TERRAFORM_LOG_PATH:
-        with open(c.NORMALIZED_TERRAFORM_LOG_PATH, "w", encoding="utf-8") as f:
-            pretty_json = json.dumps(normalized_records, indent=4)
-            f.write(pretty_json)
-
     return normalized_records
+
+
+def normalize_records(records, source_path=None):
+    """
+    Normalizes Terraform export log records into a standardized format.
+    """
+    c = cfg.Config()
+    source_path = source_path or c.TERRAFORM_LOG_PATH
+    cache_path = norm_cache.terraform_cache_path(source_path)
+    return norm_cache.normalize_with_cache(
+        source_path,
+        cache_path,
+        records,
+        _normalize_records_impl,
+    )
+
+
+def load_normalized_records(source_path=None):
+    c = cfg.Config()
+    source_path = source_path or c.TERRAFORM_LOG_PATH
+    cache_path = norm_cache.terraform_cache_path(source_path)
+    return norm_cache.load_or_normalize(
+        source_path,
+        cache_path,
+        read_json_from_file,
+        _normalize_records_impl,
+    )

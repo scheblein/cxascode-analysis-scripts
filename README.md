@@ -8,6 +8,15 @@ As a result of these requests, we have written several Python and Jupyter Notebo
 All requirements were captured in a Python `requirements.txt` file.  The libraries can be
 installed using `pip install -r requirements.txt`.
 
+**One-time setup after clone** — register the git filter that strips notebook outputs on commit (uses `.gitattributes` in this repo):
+
+```bash
+nbstripout --install --attributes .gitattributes
+nbstripout --status   # should show *.ipynb: filter: nbstripout
+```
+
+You do not need to clear outputs manually before each commit; git removes them when staging `.ipynb` files. Re-run the install command if you switch virtualenvs (the filter points at the Python that ran `nbstripout --install`).
+
 Start Jupyter from the **`notebooks/`** directory (or open notebooks from its workflow subfolders). Each notebook runs a small bootstrap so `commonlib/` imports resolve correctly.
 
 ```
@@ -21,23 +30,50 @@ notebooks/
 ```
 
 # Configuration
-Notebooks read paths from the `commonlib/config.Config` class. One variable is the **input** capture file; the other two are **optional output** paths only (written during normalization, never read back in):
+Notebooks read paths from the `commonlib/config.Config` class:
 
 ```
-export TERRAFORM_LOG_PATH=""            # Input: raw capture file to analyze (required)
-export NORMALIZED_TERRAFORM_LOG_PATH="" # Output only: e.g. plan-tflog-norm.json
-export NORMALIZED_GENESYS_SDK_PATH=""   # Output only: e.g. plan-tflog-sdk-norm.json
+export TERRAFORM_LOG_PATH=""        # Input: raw capture file to analyze (required)
+export DISABLE_NORMALIZED_CACHE=""  # Optional: set to 1 to skip cache read/write (in-memory only)
+export FORCE_RENORMALIZE=""         # Optional: set to 1 to ignore existing cache and rebuild
 ```
 
 **Set variables in the shell before starting Jupyter** — the notebook kernel inherits your terminal environment:
 
 ```bash
-export TERRAFORM_LOG_PATH=/path/to/plan-ui.json
+export TERRAFORM_LOG_PATH=/path/to/plan-tflog.log
 cd notebooks
 jupyter lab
 ```
 
-All notebooks use `TERRAFORM_LOG_PATH`. Every analysis notebook except `_shared/whatisit.ipynb` calls `normalize_records()` on the raw capture (hang notebooks included). Set the `NORMALIZED_*` paths only if you want that normalized JSON written to disk as a side effect.
+## Normalized cache (automatic)
+
+All analysis notebooks (including hang notebooks) use a **read-through cache** by default. Cache files are written next to the capture file — no extra env vars required.
+
+| Raw capture | Auto cache (terraform normalizers) | Auto cache (SDK notebook) |
+|---|---|---|
+| `plan-tflog.log` | `plan-tflog-norm.json` | `plan-tflog-sdk-norm.json` |
+| `plan-ui.json` | `plan-ui-norm.json` | — |
+| `export-tflog.log` | `export-tflog-norm.json` | `export-tflog-sdk-norm.json` |
+| `apply-tflog.log` | `apply-tflog-norm.json` | `apply-tflog-sdk-norm.json` |
+
+When a cache file exists and is **at least as new as** the raw capture, notebooks load it instead of re-parsing the log. The first run (or any run after the capture changes) writes the cache and prints `Wrote normalized cache: ...`. Later runs print `Using normalized cache: ...`.
+
+Each notebook workflow uses a **different normalizer**, so the same capture produces different `*-norm.json` content depending on which notebook you run (plan UI vs plan TF_LOG vs export, etc.). SDK analysis uses a separate `*-sdk-norm.json` cache.
+
+**Escape hatches:**
+
+| Variable | When to use |
+|---|---|
+| `DISABLE_NORMALIZED_CACHE=1` | Read-only capture directory, no sidecar files next to customer logs, or debugging without touching disk |
+| `FORCE_RENORMALIZE=1` | Rebuild cache after parser code changes (still writes cache unless disabled) |
+
+```bash
+export DISABLE_NORMALIZED_CACHE=1   # in-memory only; no *-norm.json files
+export FORCE_RENORMALIZE=1          # ignore stale cache, re-parse raw capture
+```
+
+All notebooks use `TERRAFORM_LOG_PATH`. Every analysis notebook except `_shared/whatisit.ipynb` normalizes the raw capture.
 
 **Capture file naming** (examples only — any path works):
 
