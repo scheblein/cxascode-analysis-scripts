@@ -3,6 +3,8 @@ As the support team for CX as Code, we are sometimes pulled in to examine a cust
 
 As a result of these requests, we have written several Python and Jupyter Notebook scripts to process and analyze the data.  We are releasing these into our lab environment "AS-IS" with no guarantee of support.  Our goal is to share these scripts so that the large CX as Code community can use them as they see fit.
 
+See **[HOW-TO-READ-RESULTS.md](HOW-TO-READ-RESULTS.md)** for the split between **notebooks** (find the cause) and **`*-report.json`** (compare the same action across versions), plus field reference and **`issue_attribution`** (terraform / provider / sdk).
+
 # Installation
 
 All requirements were captured in a Python `requirements.txt` file.  The libraries can be
@@ -21,13 +23,12 @@ Start Jupyter from the **`notebooks/`** directory (or open notebooks from its wo
 
 ```
 notebooks/
-  notebook_setup.py   # import bootstrap for workflow subfolders
+  commonlib/          # shared Python helpers (includes notebook_setup.py)
   whatisit.ipynb      # classify a capture and pick the right notebook
-  sdk-analysis.ipynb  # SDK DEBUG call counts from TF_LOG captures
-  commonlib/          # shared Python helpers
-  export/             # completed + hang export analysis
-  plan/               # UI output, TF_LOG trace, and hang plan analysis
-  apply/              # completed + hang apply analysis
+  sdk-plan/           # plan-analysis (UI JSON) + sdk-analysis (optional)
+  export/             # performance-analysis + hang-analysis
+  plan/               # performance-analysis + hang-analysis
+  apply/              # performance-analysis + hang-analysis
 ```
 
 # Configuration
@@ -49,14 +50,14 @@ jupyter lab
 
 ## Normalized cache (automatic)
 
-All analysis notebooks (including hang notebooks) use a **read-through cache** by default. Cache files are written next to the capture file — no extra env vars required.
+All analysis notebooks (including hang notebooks) use a **read-through cache** by default. Cache files and parser error logs are written next to the capture file — no extra env vars required.
 
-| Raw capture | Auto cache (terraform normalizers) | Auto cache (SDK notebook) |
-|---|---|---|
-| `plan-tflog.log` | `plan-tflog-norm.json` | `plan-tflog-sdk-norm.json` |
-| `plan-ui.json` | `plan-ui-norm.json` | — |
-| `export-tflog.log` | `export-tflog-norm.json` | `export-tflog-sdk-norm.json` |
-| `apply-tflog.log` | `apply-tflog-norm.json` | `apply-tflog-sdk-norm.json` |
+| Raw capture | Auto cache (terraform normalizers) | Auto cache (SDK notebook) | Parser errors (if any) |
+|---|---|---|---|
+| `plan-tflog.log` | `plan-tflog-norm.json` | `plan-tflog-sdk-norm.json` | `plan-tflog-parse-*.log` |
+| `plan-ui.json` | `plan-ui-norm.json` | — | `plan-ui-parse-*.log` |
+| `export-tflog.log` | `export-tflog-norm.json` | `export-tflog-sdk-norm.json` | `export-tflog-parse-*.log` |
+| `apply-tflog.log` | `apply-tflog-norm.json` | `apply-tflog-sdk-norm.json` | `apply-tflog-parse-*.log` |
 
 When a cache file exists and is **at least as new as** the raw capture, notebooks load it instead of re-parsing the log. The first run (or any run after the capture changes) writes the cache and prints `Wrote normalized cache: ...`. Later runs print `Using normalized cache: ...`.
 
@@ -163,16 +164,16 @@ For complex issues, enable **`TF_LOG`** and **`sdk_debug`** together.
 
 # Pick a notebook
 
-**Pick the workflow (export / plan / apply), then pick how the run went (finished normally → finished but need trace detail → hung or killed).** Set **`TERRAFORM_LOG_PATH`** to your capture file, run **`whatisit.ipynb`** if unsure what the file contains, then open the matching notebook.
+**Pick the workflow (export / plan / apply), then pick the analysis type: performance (completed run), hang (stuck/killed), or plan UI JSON (`sdk-plan/plan-analysis` only).** Set **`TERRAFORM_LOG_PATH`**, run **`whatisit.ipynb`** if unsure, then open the matching notebook.
 
-| | **Level 1 — UI JSON (stdout)** | **Level 2 — TF_LOG (completed)** | **Level 3 — TF_LOG (hung)** |
+| | **Level 1 — UI JSON (stdout)** | **Level 2 — TF_LOG performance (completed)** | **Level 3 — TF_LOG hang** |
 |--|--|--|--|
-| | *How long? Drift? Planned changes?* | *Slow or odd, but finished — need trace or export* | *Stuck? Retries? 404 storms? Graph spinning?* |
-| **Export** | — *(no UI JSON capture)* | `export/analysis.ipynb` | `export/hang-analysis.ipynb` |
-| **Plan** | `plan/output-analysis.ipynb` | `plan/log-analysis.ipynb` | `plan/hang-analysis.ipynb` |
-| **Apply** | `apply/analysis.ipynb` *(non-interactive only)* | `apply/analysis.ipynb` | `apply/hang-analysis.ipynb` |
+| | *How long? Drift? Planned changes?* | *Finished run — resource timing + API activity timeline* | *Where stuck? Graph wait? SDK pressure at stall* |
+| **Export** | — *(no UI JSON capture)* | `export/performance-analysis.ipynb` | `export/hang-analysis.ipynb` |
+| **Plan** | `sdk-plan/plan-analysis.ipynb` | `plan/performance-analysis.ipynb` | `plan/hang-analysis.ipynb` |
+| **Apply** | `apply/performance-analysis.ipynb` *(non-interactive only)* | `apply/performance-analysis.ipynb` | `apply/hang-analysis.ipynb` |
 
-**SDK API call counts** (any workflow, level 2/3 captures): `sdk-analysis.ipynb` or **`log-chomper/`** for response-time percentiles.
+**SDK API deep dive** (any workflow, level 2/3 captures): `sdk-plan/sdk-analysis.ipynb` or **`log-chomper/`** for response-time percentiles. Hang and performance notebooks export **`*-report.json`** with full SDK tables — see [`HOW-TO-READ-RESULTS.md`](HOW-TO-READ-RESULTS.md).
 
 # Three levels of analysis
 
@@ -249,18 +250,17 @@ Use the same **`TF_LOG=json`** setup as level 2 while the run is stuck, or immed
 # Workflow
 
 1. Run **`whatisit.ipynb`** against `TERRAFORM_LOG_PATH` if you are not sure what the file contains.
-2. Use the **Pick a notebook** matrix above (workflow × level), then open that notebook under `export/`, `plan/`, or `apply/`.
+2. Use the **Pick a notebook** matrix above (workflow × level), then open that notebook under `export/`, `plan/`, `apply/`, or **`sdk-plan/`** for plan UI / SDK deep dive.
+3. **Notebooks** for cause (Summary → stall/timing → issue attribution). **Export `*-report.json`** when you need to compare the same workload across provider or Terraform versions — see **`HOW-TO-READ-RESULTS.md`**.
 
 # Analysis notebooks
 
-Notebooks are grouped by workflow under **`notebooks/`** (`export/`, `plan/`, `apply/`). Start with **`whatisit.ipynb`** at the notebooks root when routing; use **`sdk-analysis.ipynb`** for SDK call counts. Use the **Pick a notebook** matrix to choose one. Notes:
+Notebooks are grouped by workflow under **`notebooks/`** (`export/`, `plan/`, `apply/`). Each workflow has **`performance-analysis.ipynb`** (completed runs) and **`hang-analysis.ipynb`** (stuck or partial captures). Plan UI JSON and optional SDK deep dive live under **`sdk-plan/`** (`plan-analysis.ipynb`, `sdk-analysis.ipynb`). Start with **`whatisit.ipynb`** when routing. Notes:
 
-- **`plan/output-analysis.ipynb`** parses **`terraform plan -json`** UI records (`refresh_start`, `resource_drift`, `planned_change`, etc.).
-- **`plan/log-analysis.ipynb`** parses **`TF_LOG=json`** trace logs captured during plan (as in `generator/generator.py` and `TF_LOG_PATH` workflows). **`resource_drift` is not available** in this format.
-- **Hang notebooks** (`export/hang-analysis.ipynb`, `plan/hang-analysis.ipynb`, `apply/hang-analysis.ipynb`) use the same **`TF_LOG=json`** captures but focus on stall patterns rather than completed-run timing.
-- **`sdk-analysis.ipynb`** parses `SDK DEBUG` request/response pairs embedded in **`TF_LOG`** output (emitted by provider HTTP hooks on every API call). Enable **`sdk_debug`** for full request bodies; it is not required for call counts or hang retry/404 analysis.
-
-**Future work:** see [`TODO.md`](TODO.md) for planned enhancements (export filter delta, 429 wait timing).
+- **`sdk-plan/plan-analysis.ipynb`** parses **`terraform plan -json`** UI records (`refresh_start`, `resource_drift`, `planned_change`, etc.).
+- **`plan/performance-analysis.ipynb`** parses **`TF_LOG=json`** trace logs from a **completed** plan. Leads with refresh timing; **Provider API activity** from SDK DEBUG hooks. **`resource_drift` is not available** in this format.
+- **Hang notebooks** (`*/hang-analysis.ipynb`) use **`TF_LOG=json`** captures that did not finish normally — stall location, graph waits, **SDK pressure** (timeline + elevated retry/404/429).
+- **`sdk-plan/sdk-analysis.ipynb`** optional raw SDK pairs and charts. Hang/performance export **`*-report.json`** (full SDK tables); see **`HOW-TO-READ-RESULTS.md`**.
 
 # Shared library
 
@@ -268,5 +268,5 @@ Python helpers live in **`notebooks/commonlib/`** (`classify_tf_log.py`, `prep_h
 
 # Other tools
 
-- **`log-chomper/`** — CLI for SDK request/response pairing and **response-time percentiles by endpoint** (complements `sdk-analysis.ipynb`, which focuses on call counts).
+- **`log-chomper/`** — CLI for SDK request/response pairing and **response-time percentiles by endpoint** (complements `sdk-plan/sdk-analysis.ipynb`, which focuses on call counts).
 - **`generator/`** — small script to generate many resources so there is enough activity to parse and log.

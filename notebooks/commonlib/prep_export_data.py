@@ -1,5 +1,4 @@
 import json
-import logging
 import re
 import sys
 import os
@@ -7,9 +6,6 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('config.py'))))
 import commonlib.config as cfg
 import commonlib.event_timing as event_timing
 import commonlib.normalized_cache as norm_cache
-
-# Set up logging
-logging.basicConfig(filename='parse_export_errors.log', level=logging.ERROR)
 
 def read_json_from_file(file_path):
     """
@@ -27,6 +23,7 @@ def read_json_from_file(file_path):
     Each line in the file should contain a complete, valid JSON object. Invalid JSON
     lines are logged as errors and skipped.
     """
+    logger = cfg.configure_capture_error_log(file_path, "parse-export-errors")
     records = []
     with open(file_path, 'r') as file:
         for line in file:
@@ -38,7 +35,7 @@ def read_json_from_file(file_path):
                 # For example, you might extract specific fields or values from the record
                 records.append(record)
             except json.JSONDecodeError as e:
-                logging.error(f"Failed to parse line '{line.strip()}' at line {e.lineno}: {e}")
+                logger.error(f"Failed to parse line '{line.strip()}' at line {e.lineno}: {e}")
     return records
 
 def _normalize_records_impl(records):

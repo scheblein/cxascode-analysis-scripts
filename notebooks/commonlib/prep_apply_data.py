@@ -1,5 +1,4 @@
 import json
-import logging
 import sys
 import os
 
@@ -9,10 +8,8 @@ import commonlib.event_timing as event_timing
 import commonlib.normalized_cache as norm_cache
 import commonlib.prep_tf_log_trace as trace
 
-logging.basicConfig(filename="parse_apply_errors.log", level=logging.ERROR)
-
-
 def read_json_from_file(file_path):
+    logger = cfg.configure_capture_error_log(file_path, "parse-apply-errors")
     records = []
     with open(file_path, "r", encoding="utf-8") as file:
         for line in file:
@@ -22,7 +19,7 @@ def read_json_from_file(file_path):
             try:
                 records.append(json.loads(line))
             except json.JSONDecodeError as exc:
-                logging.error(
+                logger.error(
                     "Failed to parse line '%s' at line %s: %s",
                     line,
                     exc.lineno,

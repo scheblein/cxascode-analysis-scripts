@@ -80,6 +80,68 @@ def generate_plt_by_method_url(df,method_url,top_n=None):
     plt.tight_layout()
     return plt
 
+
+def plot_sdk_request_timeline(
+    df_timeline,
+    *,
+    value_column: str = "request_count",
+    title: str = "SDK requests per minute (from log start)",
+    figsize=(14, 6),
+):
+    """
+    Line chart from sdk_timeline_dataframe (long format).
+
+    Highlights DNC list export endpoints when present.
+    """
+    if df_timeline is None or df_timeline.empty:
+        print("No timeline data to chart.")
+        return None
+
+    if value_column not in df_timeline.columns:
+        raise ValueError(f"timeline dataframe missing column: {value_column}")
+
+    pivot = (
+        df_timeline.pivot_table(
+            index="minute_from_start",
+            columns="method_url",
+            values=value_column,
+            aggfunc="sum",
+            fill_value=0,
+        )
+        .sort_index()
+    )
+    if pivot.empty:
+        print("No timeline data to chart.")
+        return None
+
+    highlight = {
+        col
+        for col in pivot.columns
+        if "/dnclists/" in str(col) and "/export" in str(col)
+    }
+
+    plt.figure(figsize=figsize)
+    for col in pivot.columns:
+        series = pivot[col]
+        if series.sum() <= 0:
+            continue
+        is_highlight = col in highlight
+        plt.plot(
+            series.index,
+            series.values,
+            label=str(col)[:80],
+            linewidth=2.5 if is_highlight else 1.2,
+            alpha=1.0 if is_highlight else 0.65,
+        )
+
+    plt.xlabel("Minutes from log start")
+    plt.ylabel("Count per bucket")
+    plt.title(title)
+    plt.legend(bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=8)
+    plt.tight_layout()
+    return plt
+
+
 def generate_duration_by_resource_type(df_merged_refresh, metric="total", top_n=None):
     """
     Plot export durations per resource_type using df_merged_refresh

@@ -1,15 +1,12 @@
 import json
-import logging
 import re
 import sys
 import os
+from collections import Counter, defaultdict
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('config.py'))))
 import commonlib.config as cfg
 import commonlib.normalized_cache as norm_cache
 
-
-# Set up logging
-logging.basicConfig(filename='parse_sdk_errors.log', level=logging.ERROR)
 
 def strip_and_replace_guid(uri):
     """
@@ -56,6 +53,7 @@ def read_json_from_file(file_path):
         >>> print(records[0])  
         {'id': 1, 'name': 'test'}
     """
+    logger = cfg.configure_capture_error_log(file_path, "parse-sdk-errors")
     records = []
     with open(file_path, 'r') as file:
         for line in file:
@@ -67,7 +65,7 @@ def read_json_from_file(file_path):
                 # For example, you might extract specific fields or values from the record
                 records.append(record)
             except json.JSONDecodeError as e:
-                logging.error(f"Failed to parse line '{line.strip()}' at line {e.lineno}: {e}")
+                logger.error(f"Failed to parse line '{line.strip()}' at line {e.lineno}: {e}")
     return records
 
 def _normalize_records_impl(records):
@@ -121,3 +119,78 @@ def load_normalized_records(source_path=None):
         read_json_from_file,
         _normalize_records_impl,
     )
+
+
+def sdk_requests_timeline_dataframe(
+    normalized_records,
+    bucket_minutes: float = 1.0,
+    top_endpoints: int = 5,
+):
+    """Request counts per minute from SDK norm records (for sdk-analysis.ipynb)."""
+    import pandas as pd
+    from datetime import datetime
+
+    requests = [
+        rec
+        for rec in normalized_records
+        if rec.get("debug_type") == "SDK DEBUG REQUEST"
+    ]
+    if not requests:
+        return pd.DataFrame()
+
+    timestamps = []
+    for rec in requests:
+        ts = rec.get("timestamp")
+        if not ts:
+            continue
+        try:
+            timestamps.append(datetime.fromisoformat(ts.replace("Z", "+00:00")))
+        except ValueError:
+            continue
+    if not timestamps:
+        return pd.DataFrame()
+
+    start = min(timestamps)
+    bucket_seconds = max(1, int(bucket_minutes * 60))
+    endpoint_totals = Counter()
+    bucket_counts: dict[int, Counter] = defaultdict(Counter)
+
+    for rec in requests:
+        ts = rec.get("timestamp")
+        if not ts:
+            continue
+        try:
+            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        bucket = int((dt - start).total_seconds() // bucket_seconds)
+        method = rec.get("invocation_method") or "?"
+        url = rec.get("sanitized_url") or strip_and_replace_guid(rec.get("invocation_url") or "")
+        endpoint = f"{method} {url}"
+        bucket_counts[bucket][endpoint] += 1
+        endpoint_totals[endpoint] += 1
+
+    selected = {endpoint for endpoint, _ in endpoint_totals.most_common(top_endpoints)}
+    for endpoint in endpoint_totals:
+        if "/dnclists/" in endpoint and "/export" in endpoint:
+            selected.add(endpoint)
+
+    rows = []
+    for bucket in sorted(bucket_counts):
+        minute = round((bucket * bucket_seconds) / 60, 2)
+        for endpoint, count in bucket_counts[bucket].items():
+            if endpoint not in selected:
+                continue
+            rows.append(
+                {
+                    "minute_from_start": minute,
+                    "method_url": endpoint,
+                    "request_count": count,
+                    "is_dnclist_export": "/dnclists/" in endpoint and "/export" in endpoint,
+                }
+            )
+
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    return df.sort_values(["minute_from_start", "request_count"], ascending=[True, False])

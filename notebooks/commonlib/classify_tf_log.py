@@ -1,9 +1,9 @@
 import json
-import logging
 import re
 from collections import Counter
 from dataclasses import dataclass, field
 
+import commonlib.config as cfg
 from commonlib.prep_tf_log_trace import (
     INVALID_PLAN_RE,
     REFRESH_COMPLETE_RE,
@@ -42,8 +42,6 @@ UI_TYPES = PLAN_UI_TYPES | APPLY_UI_TYPES | {"change_summary", "version", "outpu
 
 TF_RPC_PLAN_HINTS = {"PlanResourceChange", "PlanAction", "PlanEphemeralResource"}
 TF_RPC_APPLY_HINTS = {"ApplyResourceChange", "ApplyAction", "ApplyEphemeralResource"}
-
-logging.basicConfig(filename="classify_tf_log_errors.log", level=logging.ERROR)
 
 
 @dataclass
@@ -121,6 +119,7 @@ class TfLogClassification:
 
 
 def read_json_from_file(file_path: str) -> list[dict]:
+    logger = cfg.configure_capture_error_log(file_path, "classify-tf-log-errors")
     records = []
     with open(file_path, "r", encoding="utf-8") as file:
         for line in file:
@@ -130,7 +129,7 @@ def read_json_from_file(file_path: str) -> list[dict]:
             try:
                 records.append(json.loads(line))
             except json.JSONDecodeError as exc:
-                logging.error("Failed to parse line at %s: %s", exc.lineno, exc)
+                logger.error("Failed to parse line at %s: %s", exc.lineno, exc)
     return records
 
 
@@ -301,7 +300,7 @@ def finalize_classification(result: TfLogClassification) -> TfLogClassification:
     if result.is_plan and result.is_apply and result.apply_rpc_count == 0:
         result.warnings.append(
             "Both plan and apply graph activity detected. "
-            "Apply logs often include a plan phase; use apply/analysis.ipynb for apply timing."
+            "Apply logs often include a plan phase; use apply/performance-analysis.ipynb for apply timing."
         )
 
     return result
