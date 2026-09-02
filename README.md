@@ -33,7 +33,7 @@ export DISABLE_NORMALIZED_CACHE=""  # Optional: set to 1 to skip cache read/writ
 
 # Pick a notebook
 
-Set **`TERRAFORM_LOG_PATH`** to your TF_LOG capture. Pick a **workflow** and **type**:
+Set **`TERRAFORM_LOG_PATH`** to your log file. Pick a **workflow** and **type**:
 
 | Workflow | **Performance** (completed run) | **Hang** (stuck / killed / partial) |
 |---|---|---|
